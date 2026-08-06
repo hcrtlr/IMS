@@ -43,6 +43,12 @@ public class LocationProfile : AuditableEntity, IAccountScoped
     /// <summary>
     /// True when this profile can hold an item needing the given temperature band.
     /// Backs business rule §11.8.
+    ///
+    /// The location's operating band must sit INSIDE the item's acceptable band: the
+    /// location may sit anywhere within its own range, so every temperature it can reach
+    /// has to be one the item tolerates. A -5..4 °C freezer therefore cannot store an
+    /// item specified as 2..6 °C, because the location is allowed to reach -5 °C and
+    /// freeze it - even though the two ranges overlap.
     /// </summary>
     public bool SupportsTemperatureRange(decimal? itemMin, decimal? itemMax)
     {
@@ -51,8 +57,15 @@ public class LocationProfile : AuditableEntity, IAccountScoped
         // A profile with no declared band is ambient-only and cannot guarantee a controlled range.
         if (TemperatureMin is null && TemperatureMax is null) return false;
 
-        if (itemMin is not null && TemperatureMin is not null && itemMin < TemperatureMin) return false;
-        if (itemMax is not null && TemperatureMax is not null && itemMax > TemperatureMax) return false;
+        // Location could get colder than the item allows.
+        if (itemMin is not null && TemperatureMin is not null && TemperatureMin < itemMin) return false;
+
+        // Location could get warmer than the item allows.
+        if (itemMax is not null && TemperatureMax is not null && TemperatureMax > itemMax) return false;
+
+        // A half-open location band cannot be guaranteed against a bound the item declares.
+        if (itemMin is not null && TemperatureMin is null) return false;
+        if (itemMax is not null && TemperatureMax is null) return false;
 
         return true;
     }

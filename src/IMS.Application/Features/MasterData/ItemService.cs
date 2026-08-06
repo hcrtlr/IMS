@@ -436,11 +436,14 @@ public class ItemService
             !await _db.Zones.AnyAsync(z => z.Id == pickZoneId && z.Warehouse.AccountId == _scope.AccountId, ct))
             throw new NotFoundException($"Default pick zone '{pickZoneId}' was not found.");
 
-        // Doc §11.6 - expiration-tracked items need a way to derive an expiration date,
-        // so either every receipt supplies one or the item declares a shelf life.
-        if (isExpirationTracked && shelfLifeDays is <= 0)
+        // ShelfLifeDays is optional: it only lets the system DERIVE an expiration date when
+        // a receipt does not supply one. Doc §11.6 ("expiration date is mandatory for
+        // expiration-tracked items") is about the date itself, so it is enforced at receipt
+        // time in ReceivingService, where the date is actually captured. Here we only
+        // reject a nonsensical value.
+        if (shelfLifeDays is <= 0)
             throw new BusinessRuleViolationException(
-                "ShelfLifeDays must be greater than zero when the item is expiration tracked.", ruleNumber: 6);
+                "ShelfLifeDays must be greater than zero when supplied.", ruleNumber: 6);
 
         // Expiration is a lot-level attribute (doc §5.3), so tracking one implies the other.
         if (isExpirationTracked && !isLotTracked && !isSerialTracked)
