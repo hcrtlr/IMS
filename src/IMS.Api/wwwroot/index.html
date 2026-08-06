@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IMS — Inventory Management System</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<!-- Login ------------------------------------------------------------------ -->
+<div id="login-view">
+  <div class="card">
+    <h2>Inventory Management System</h2>
+    <p class="muted">Sign in to continue. A demo interface for exercising the API.</p>
+    <div class="spacer"></div>
+    <label for="login-user">Username</label>
+    <input id="login-user" value="admin" autocomplete="username">
+    <div class="spacer"></div>
+    <label for="login-pass">Password</label>
+    <input id="login-pass" type="password" autocomplete="current-password">
+    <div class="spacer"></div>
+    <button class="action" id="btn-login">Sign in</button>
+    <p class="muted" style="margin-top:12px">
+      Full API documentation is at <a href="/swagger" target="_blank">/swagger</a>.
+    </p>
+  </div>
+</div>
+
+<!-- Application ------------------------------------------------------------ -->
+<div id="app-view" class="hidden">
+  <header>
+    <h1>Inventory Management System</h1>
+    <select id="warehouse-picker" style="max-width:260px"></select>
+    <span class="who"><span id="who-name"></span> · <span id="who-role"></span>
+      <button class="action secondary" id="btn-logout" style="margin-left:8px">Sign out</button>
+    </span>
+  </header>
+
+  <nav id="nav"></nav>
+
+  <main>
+    <!-- Dashboard ------------------------------------------------------- -->
+    <section id="tab-dashboard">
+      <h2>Dashboard</h2>
+      <div class="card">
+        <h3>Stock on hand by item</h3>
+        <div id="dash-summary"></div>
+      </div>
+      <div class="card">
+        <h3>Open work</h3>
+        <div class="row">
+          <div><label>Putaway tasks</label><div id="dash-putaway" class="muted">–</div></div>
+          <div><label>Pick tasks</label><div id="dash-pick" class="muted">–</div></div>
+          <div><label>Count tasks</label><div id="dash-count" class="muted">–</div></div>
+          <div><label>Pending adjustments</label><div id="dash-adj" class="muted">–</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Recent stock movements</h3>
+        <div id="dash-txn"></div>
+      </div>
+    </section>
+
+    <!-- Master data ----------------------------------------------------- -->
+    <section id="tab-master">
+      <h2>Master data</h2>
+
+      <div class="card">
+        <h3>Create item (doc §4.1)</h3>
+        <div class="row">
+          <div><label>SKU</label><input id="item-sku"></div>
+          <div><label>Name</label><input id="item-name"></div>
+          <div><label>Base UOM</label><select id="item-uom"></select></div>
+          <div class="narrow"><label>Weight</label><input id="item-weight" type="number" step="0.001"></div>
+        </div>
+        <div class="spacer"></div>
+        <div class="row">
+          <div class="narrow"><label>Lot tracked</label><select id="item-lot"><option value="false">No</option><option value="true">Yes</option></select></div>
+          <div class="narrow"><label>Serial tracked</label><select id="item-serial"><option value="false">No</option><option value="true">Yes</option></select></div>
+          <div class="narrow"><label>Expiration</label><select id="item-exp"><option value="false">No</option><option value="true">Yes</option></select></div>
+          <div class="narrow"><label>Shelf life (days)</label><input id="item-shelf" type="number"></div>
+          <div><button class="action" id="btn-create-item">Create item</button></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Items</h3>
+        <div id="item-list"></div>
+      </div>
+
+      <div class="card">
+        <h3>Locations</h3>
+        <div id="location-list"></div>
+      </div>
+    </section>
+
+    <!-- Inventory -------------------------------------------------------- -->
+    <section id="tab-inventory">
+      <h2>Inventory</h2>
+
+      <div class="card">
+        <h3>Manual stock entry (Faz 2)</h3>
+        <div class="row">
+          <div><label>Item</label><select id="me-item"></select></div>
+          <div><label>Location</label><select id="me-location"></select></div>
+          <div class="narrow"><label>Quantity</label><input id="me-qty" type="number" step="0.0001"></div>
+          <div><label>Lot number</label><input id="me-lot" placeholder="if lot tracked"></div>
+          <div><label>Expiration</label><input id="me-exp" type="date"></div>
+          <div><button class="action" id="btn-manual-entry">Book stock</button></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Move stock (doc §8)</h3>
+        <div class="row">
+          <div><label>Item</label><select id="mv-item"></select></div>
+          <div><label>From</label><select id="mv-from"></select></div>
+          <div><label>To</label><select id="mv-to"></select></div>
+          <div class="narrow"><label>Quantity</label><input id="mv-qty" type="number" step="0.0001"></div>
+          <div><button class="action" id="btn-move">Move</button></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Balances (doc §5.1)</h3>
+        <div id="inv-list"></div>
+      </div>
+    </section>
+
+    <!-- Inbound ---------------------------------------------------------- -->
+    <section id="tab-inbound">
+      <h2>Inbound</h2>
+
+      <div class="card">
+        <h3>Create inbound order (doc §6.1)</h3>
+        <div class="row">
+          <div><label>Supplier</label><select id="ib-supplier"></select></div>
+          <div><label>Item</label><select id="ib-item"></select></div>
+          <div class="narrow"><label>Expected qty</label><input id="ib-qty" type="number" step="0.0001"></div>
+          <div><button class="action" id="btn-create-inbound">Create order</button></div>
+        </div>
+        <p class="muted">Creates a single-line order in Draft. Use Confirm, then Receive.</p>
+      </div>
+
+      <div class="card">
+        <h3>Inbound orders</h3>
+        <div id="inbound-list"></div>
+      </div>
+
+      <div class="card">
+        <h3>Putaway tasks (doc §6.4)</h3>
+        <div id="putaway-list"></div>
+      </div>
+    </section>
+
+    <!-- Outbound --------------------------------------------------------- -->
+    <section id="tab-outbound">
+      <h2>Outbound</h2>
+
+      <div class="card">
+        <h3>Create order (doc §7.1)</h3>
+        <div class="row">
+          <div><label>Customer</label><select id="ob-customer"></select></div>
+          <div><label>Item</label><select id="ob-item"></select></div>
+          <div class="narrow"><label>Quantity</label><input id="ob-qty" type="number" step="0.0001"></div>
+          <div><button class="action" id="btn-create-order">Create order</button></div>
+        </div>
+        <p class="muted">Flow: Confirm → Release → Allocate → Create pick tasks → Complete picks → Ship.</p>
+      </div>
+
+      <div class="card">
+        <h3>Orders</h3>
+        <div id="order-list"></div>
+      </div>
+
+      <div class="card">
+        <h3>Pick tasks (doc §7.4)</h3>
+        <div id="pick-list"></div>
+      </div>
+    </section>
+
+    <!-- Counting --------------------------------------------------------- -->
+    <section id="tab-counting">
+      <h2>Counting &amp; adjustments</h2>
+
+      <div class="card">
+        <h3>Create count plan (Faz 5)</h3>
+        <div class="row">
+          <div><label>Name</label><input id="cp-name" placeholder="Weekly cycle count"></div>
+          <div><label>Type</label><select id="cp-type">
+            <option>Cycle</option><option>Full</option><option>Spot</option></select></div>
+          <div><label>Location to count</label><select id="cp-location"></select></div>
+          <div><button class="action" id="btn-create-plan">Create &amp; release</button></div>
+        </div>
+        <p class="muted">
+          Counting is blind: the system quantity is not shown until after you submit.
+          A variance raises an adjustment for approval — stock only changes on approval.
+        </p>
+      </div>
+
+      <div class="card">
+        <h3>Open count tasks</h3>
+        <div id="count-list"></div>
+      </div>
+
+      <div class="card">
+        <h3>Adjustments</h3>
+        <div id="adj-list"></div>
+      </div>
+    </section>
+
+    <!-- Transactions ----------------------------------------------------- -->
+    <section id="tab-transactions">
+      <h2>Transaction ledger (doc §5.6)</h2>
+      <div class="card">
+        <p class="muted">
+          Immutable. Every stock change writes exactly one row (rule §11.9) and rows are
+          never updated or deleted (rule §11.10) — enforced by database triggers.
+        </p>
+        <div class="row">
+          <div><label>Type</label><select id="txn-type"><option value="">All</option></select></div>
+          <div><button class="action secondary" id="btn-refresh-txn">Refresh</button></div>
+        </div>
+        <div id="txn-list"></div>
+      </div>
+    </section>
+
+    <!-- Algorithm readiness ---------------------------------------------- -->
+    <section id="tab-readiness">
+      <h2>Algorithm readiness (Faz 6)</h2>
+      <div class="card">
+        <p class="muted">
+          Doc §10 defers the algorithms themselves. This reports whether the data those
+          algorithms will need is actually being captured.
+        </p>
+        <div id="readiness-list"></div>
+      </div>
+      <div class="card">
+        <h3>Item demand velocity</h3>
+        <div id="demand-list"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>
