@@ -2,6 +2,7 @@ using IMS.Application.Common.Interfaces;
 using IMS.Domain.Entities.Inventory;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using NpgsqlTypes;
 
 namespace IMS.Infrastructure.Persistence.Repositories;
 
@@ -44,16 +45,21 @@ public class InventoryRepository : IInventoryRepository
             FOR UPDATE
             """;
 
+        // Every parameter is explicitly typed so an untyped NULL can never leave
+        // PostgreSQL unable to determine the parameter's type.
         var rows = await _db.InventoryBalances
             .FromSqlRaw(sql,
-                new NpgsqlParameter("wh", key.WarehouseId),
-                new NpgsqlParameter("loc", key.LocationId),
-                new NpgsqlParameter("item", key.ItemId),
-                new NpgsqlParameter("status", key.InventoryStatusId),
-                new NpgsqlParameter("lot", (object?)key.LotId ?? DBNull.Value),
-                new NpgsqlParameter("serial", (object?)key.SerialId ?? DBNull.Value),
-                new NpgsqlParameter("lpn", (object?)key.LicensePlateId ?? DBNull.Value),
-                new NpgsqlParameter("nullKey", NullKey))
+                new NpgsqlParameter("wh", NpgsqlDbType.Uuid) { Value = key.WarehouseId },
+                new NpgsqlParameter("loc", NpgsqlDbType.Uuid) { Value = key.LocationId },
+                new NpgsqlParameter("item", NpgsqlDbType.Uuid) { Value = key.ItemId },
+                new NpgsqlParameter("status", NpgsqlDbType.Uuid) { Value = key.InventoryStatusId },
+                new NpgsqlParameter("lot", NpgsqlDbType.Uuid)
+                    { Value = (object?)key.LotId ?? DBNull.Value },
+                new NpgsqlParameter("serial", NpgsqlDbType.Uuid)
+                    { Value = (object?)key.SerialId ?? DBNull.Value },
+                new NpgsqlParameter("lpn", NpgsqlDbType.Uuid)
+                    { Value = (object?)key.LicensePlateId ?? DBNull.Value },
+                new NpgsqlParameter("nullKey", NpgsqlDbType.Uuid) { Value = NullKey })
             .ToListAsync(ct);
 
         return rows.FirstOrDefault();
@@ -63,7 +69,7 @@ public class InventoryRepository : IInventoryRepository
     {
         var rows = await _db.InventoryBalances
             .FromSqlRaw("SELECT * FROM inventory_balances WHERE \"Id\" = @id FOR UPDATE",
-                new NpgsqlParameter("id", balanceId))
+                new NpgsqlParameter("id", NpgsqlDbType.Uuid) { Value = balanceId })
             .ToListAsync(ct);
 
         return rows.FirstOrDefault();
@@ -135,14 +141,20 @@ public class InventoryRepository : IInventoryRepository
             FOR UPDATE OF b
             """;
 
+        // Nullable parameters carry an explicit type. PostgreSQL cannot infer the type of
+        // an untyped NULL used in "@p IS NULL OR col = @p", and fails with
+        // "42P08: could not determine data type of parameter".
         return await _db.InventoryBalances
             .FromSqlRaw(sql,
-                new NpgsqlParameter("wh", warehouseId),
-                new NpgsqlParameter("item", itemId),
-                new NpgsqlParameter("lotNumber", (object?)requiredLotNumber ?? DBNull.Value),
-                new NpgsqlParameter("serialNumber", (object?)requiredSerialNumber ?? DBNull.Value),
-                new NpgsqlParameter("asOf", asOf),
-                new NpgsqlParameter("minShelfLife", (object?)minimumShelfLifeDays ?? DBNull.Value))
+                new NpgsqlParameter("wh", NpgsqlDbType.Uuid) { Value = warehouseId },
+                new NpgsqlParameter("item", NpgsqlDbType.Uuid) { Value = itemId },
+                new NpgsqlParameter("lotNumber", NpgsqlDbType.Text)
+                    { Value = (object?)requiredLotNumber ?? DBNull.Value },
+                new NpgsqlParameter("serialNumber", NpgsqlDbType.Text)
+                    { Value = (object?)requiredSerialNumber ?? DBNull.Value },
+                new NpgsqlParameter("asOf", NpgsqlDbType.TimestampTz) { Value = asOf },
+                new NpgsqlParameter("minShelfLife", NpgsqlDbType.Integer)
+                    { Value = (object?)minimumShelfLifeDays ?? DBNull.Value })
             .ToListAsync(ct);
     }
 
@@ -156,11 +168,22 @@ public class InventoryRepository : IInventoryRepository
             .SumAsync(b => (decimal?)b.AvailableQuantity, ct) ?? 0m;
     }
 
-    public Task RemoveEmptyBalanceAsync(InventoryBalance balance, CancellationToken ct = default)
+    public async Task RemoveEmptyBalanceAsync(InventoryBalance balance, CancellationToken ct = default)
     {
-        if (balance.IsEmpty())
-            _db.InventoryBalances.Remove(balance);
+        if (!balance.IsEmpty()) return;
 
-        return Task.CompletedTask;
+        // A drained balance is only prunable if nothing still points at it. Allocations,
+        // count tasks and adjustments keep a required reference to the exact balance row
+        // they acted on, and those records outlive the stock: a shipped allocation is
+        // history, not something to cascade away. Deleting the row here would sever a
+        // required relationship and abort the whole shipment.
+        var referenced =
+            await _db.InventoryAllocations.AnyAsync(a => a.InventoryBalanceId == balance.Id, ct)
+            || await _db.CountTasks.AnyAsync(t => t.InventoryBalanceId == balance.Id, ct)
+            || await _db.InventoryAdjustments.AnyAsync(a => a.InventoryBalanceId == balance.Id, ct);
+
+        if (referenced) return;
+
+        _db.InventoryBalances.Remove(balance);
     }
 }

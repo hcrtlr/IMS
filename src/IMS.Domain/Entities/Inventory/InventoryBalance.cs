@@ -125,6 +125,20 @@ public class InventoryBalance : BaseEntity, IWarehouseScoped
         AllocatedQuantity -= quantity;
     }
 
+    /// <summary>
+    /// Adds stock that arrives still reserved for an order - the destination leg of a
+    /// pick move. On-hand and allocated rise together, so the stock stays committed to
+    /// its order while it sits in staging and remains invisible to new allocations.
+    /// </summary>
+    public void AddAllocatedStock(decimal quantity)
+    {
+        if (quantity <= 0)
+            throw new BusinessRuleViolationException("Quantity to add must be greater than zero.");
+
+        OnHandQuantity += quantity;
+        AllocatedQuantity += quantity;
+    }
+
     /// <summary>Adds physical stock (receipt, positive adjustment, inbound movement leg).</summary>
     public void AddStock(decimal quantity)
     {
