@@ -95,6 +95,32 @@ Section 9 is absent from the source document. The following was designed by anal
 | **Stock is only changed on approval**, not when the adjustment is raised | Rule §11.9 requires every stock change to write a transaction; deferring the change to approval keeps a single, auditable moment of truth. |
 | `AdjustmentReason` enum | Faz 5 pairs adjustments with "hold ve damaged işlemleri", implying a reason is recorded. |
 | A variance count raises an adjustment rather than moving stock directly | Keeps the immutable-ledger guarantee (§11.10) and the approval gate consistent. |
+| **Blind counting**: the counter is not shown `SystemQuantity` | A count anchored to the expected number is not evidence. The snapshot is stored on the task for comparison, but is not meant to be surfaced to the person counting. |
+| A **no-variance** count closes the task immediately; a variance holds it open until the adjustment is decided | The task's purpose is to resolve a discrepancy, so it is not finished while one is outstanding. |
+| **Separation of duties**: the person who raised an adjustment cannot approve it | Not in the document. An approval gate that the requester can satisfy themselves is not a control. Role policy already prevents an Operator approving; this additionally stops an Admin or Manager self-approving. Relax by removing the check in `CountingService.ApproveAdjustmentAsync` if a single-operator warehouse is intended. |
+| A `ByLocation` plan's location list is supplied at **release** time, not stored on the plan | Avoids a `CountPlanLocation` join table the document never mentions, and avoids server-side state between the two calls. |
+| Locations in scope holding **no stock** generate no task | Counting nothing produces no evidence either way. A "should be empty and is" check would need a documented expectation the spec does not define. |
+| A count task targets **one `InventoryBalance` row**, not a location | Matches the §5.1 uniqueness tuple, so a variance always resolves to exactly one balance and one lot/serial/LPN. |
+
+### §9 audit trail
+
+The workflow records, and the `GET /api/inventory-adjustments/{id}/audit` endpoint returns:
+
+| Recorded | Where |
+|----------|-------|
+| Who created the count plan, and when | `CountPlan.CreatedBy` / `CreatedAt` |
+| Who released it, and when | `CountPlan.UpdatedBy` / `ReleasedAt` |
+| The blind system snapshot per task | `CountTask.SystemQuantity` |
+| Who counted, what they found, and when | `CountTask.CountedBy` / `CountedQuantity` / `CountedAt` |
+| Who raised the adjustment, and when | `InventoryAdjustment.RequestedBy` / `CreatedAt` |
+| Who approved or rejected it, and when | `InventoryAdjustment.ApprovedBy` / `ApprovedAt` |
+| Why it was rejected | `InventoryAdjustment.RejectionReason` |
+| **Inventory before the change** | `QuantityBeforeApproval` — read under a row lock at approval, **not** the snapshot from raise time |
+| **Inventory after the change** | `QuantityAfterApproval` |
+| Whether stock moved between raising and approval | `DriftedBeforeApproval` |
+| The ledger row the change produced | `InventoryTransactionId` → immutable `InventoryTransaction` (§11.10) |
+
+**Why before/after are separate from `SystemQuantity`:** `SystemQuantity` is a snapshot taken when the adjustment was raised, which may be minutes or days before approval. Stock can legitimately move in between. The approver signs off on a *target* quantity, so that target is what gets applied, the true before/after values are recorded from the locked row, and any drift is flagged rather than silently absorbed.
 
 ---
 

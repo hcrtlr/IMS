@@ -43,7 +43,7 @@ public class InventoryAdjustment : AuditableEntity, IWarehouseScoped, IAccountSc
     public Guid? InventoryBalanceId { get; set; }
     public InventoryBalance? InventoryBalance { get; set; }
 
-    /// <summary>System on-hand at the moment the adjustment was raised.</summary>
+    /// <summary>System on-hand at the moment the adjustment was RAISED.</summary>
     public decimal SystemQuantity { get; set; }
 
     /// <summary>The corrected on-hand the approver is being asked to accept.</summary>
@@ -51,6 +51,27 @@ public class InventoryAdjustment : AuditableEntity, IWarehouseScoped, IAccountSc
 
     /// <summary>CountedQuantity - SystemQuantity. Signed: negative writes stock off.</summary>
     public decimal AdjustmentQuantity { get; set; }
+
+    // --- Before/after audit -------------------------------------------------
+    // SystemQuantity is a snapshot from when the adjustment was raised, which can be
+    // minutes or days before approval. These two record what the balance ACTUALLY held
+    // immediately before and after the approved change, read under a row lock, so the
+    // audit trail states what really happened rather than what was expected to happen.
+
+    /// <summary>Actual on-hand read under lock immediately before the change was applied.</summary>
+    public decimal? QuantityBeforeApproval { get; set; }
+
+    /// <summary>Actual on-hand immediately after the change was applied.</summary>
+    public decimal? QuantityAfterApproval { get; set; }
+
+    /// <summary>
+    /// True when stock moved between raising and approval, so the applied delta no longer
+    /// matches the snapshot the approver reviewed. Surfaced in the audit trail.
+    /// </summary>
+    public bool DriftedBeforeApproval { get; set; }
+
+    /// <summary>The ledger row written when this adjustment was approved.</summary>
+    public Guid? InventoryTransactionId { get; set; }
 
     public AdjustmentReason Reason { get; set; } = AdjustmentReason.CountVariance;
     public AdjustmentStatus Status { get; set; } = AdjustmentStatus.Pending;

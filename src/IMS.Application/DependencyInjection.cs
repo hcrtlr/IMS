@@ -1,5 +1,6 @@
 using IMS.Application.Common.Services;
 using IMS.Application.Features.Auth;
+using IMS.Application.Features.Counting;
 using IMS.Application.Features.Inbound;
 using IMS.Application.Features.Inventory;
 using IMS.Application.Features.MasterData;
@@ -41,6 +42,9 @@ public static class DependencyInjection
         services.AddScoped<AllocationService>();
         services.AddScoped<PickingService>();
         services.AddScoped<ShippingService>();
+
+        // Faz 5 - inventory control (counting and adjustment)
+        services.AddScoped<CountingService>();
 
         return services;
     }

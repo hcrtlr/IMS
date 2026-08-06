@@ -92,6 +92,8 @@ public class InventoryAdjustmentConfiguration : IEntityTypeConfiguration<Invento
         b.Property(x => x.SystemQuantity).HasPrecision(18, 4).IsRequired();
         b.Property(x => x.CountedQuantity).HasPrecision(18, 4).IsRequired();
         b.Property(x => x.AdjustmentQuantity).HasPrecision(18, 4).IsRequired();
+        b.Property(x => x.QuantityBeforeApproval).HasPrecision(18, 4);
+        b.Property(x => x.QuantityAfterApproval).HasPrecision(18, 4);
         b.Property(x => x.Reason).HasConversion<int>();
         b.Property(x => x.Status).HasConversion<int>();
         b.Property(x => x.RequestedBy).HasMaxLength(150);

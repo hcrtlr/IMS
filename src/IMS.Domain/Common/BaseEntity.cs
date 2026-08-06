@@ -6,6 +6,17 @@ namespace IMS.Domain.Common;
 /// </summary>
 public abstract class BaseEntity
 {
+    /// <summary>
+    /// Assigned client-side so an entity can be referenced (and its id logged or returned)
+    /// before it is saved.
+    ///
+    /// CAUTION: because the key is always populated, EF Core classifies an untracked entity
+    /// discovered through a navigation property as Modified rather than Added, and emits an
+    /// UPDATE against a row that does not exist. When attaching a child to a parent that has
+    /// ALREADY been saved, add it through its DbSet - `_db.Children.Add(child)` - not only
+    /// through `parent.Children.Add(child)`. Building a whole new graph before calling
+    /// `_db.Parents.Add(parent)` is safe, because the entire graph is then Added.
+    /// </summary>
     public Guid Id { get; set; } = Guid.NewGuid();
 }
 
