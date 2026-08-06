@@ -1,4 +1,5 @@
 using IMS.Application.Common.Services;
+using IMS.Application.Features.Algorithms;
 using IMS.Application.Features.Auth;
 using IMS.Application.Features.Counting;
 using IMS.Application.Features.Inbound;
@@ -45,6 +46,9 @@ public static class DependencyInjection
 
         // Faz 5 - inventory control (counting and adjustment)
         services.AddScoped<CountingService>();
+
+        // Faz 6 - algorithm readiness (data capture only; no algorithm decides anything)
+        services.AddScoped<AlgorithmReadinessService>();
 
         return services;
     }
