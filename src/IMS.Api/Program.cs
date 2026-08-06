@@ -30,7 +30,7 @@ try
         .ReadFrom.Configuration(context.Configuration)
         .ReadFrom.Services(services)
         .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
-        .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", LogEventLevel.Warning)
+        
         .Enrich.FromLogContext()
         .Enrich.WithProperty("Application", "IMS.Api")
         .WriteTo.Console()

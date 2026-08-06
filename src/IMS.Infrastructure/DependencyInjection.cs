@@ -32,9 +32,12 @@ public static class DependencyInjection
                 npgsql.EnableRetryOnFailure(maxRetryCount: 3, TimeSpan.FromSeconds(5), null);
             });
 
-            // Every query is read-only unless a service explicitly tracks, which keeps
-            // accidental writes out of reporting paths.
             options.UseQueryTrackingBehavior(QueryTrackingBehavior.TrackAll);
+
+            // Parameter values in logs are a privacy risk, so this is opt-in and only
+            // ever enabled for local debugging.
+            if (configuration.GetValue("Database:SensitiveDataLogging", false))
+                options.EnableSensitiveDataLogging();
         });
 
         services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<ImsDbContext>());

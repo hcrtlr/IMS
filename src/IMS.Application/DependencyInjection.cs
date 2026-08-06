@@ -1,5 +1,6 @@
 using IMS.Application.Common.Services;
 using IMS.Application.Features.Auth;
+using IMS.Application.Features.Inbound;
 using IMS.Application.Features.Inventory;
 using IMS.Application.Features.MasterData;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,6 +30,10 @@ public static class DependencyInjection
         services.AddScoped<InventoryLedger>();
         services.AddScoped<InventoryService>();
         services.AddScoped<TrackingService>();
+
+        // Faz 3 - inbound
+        services.AddScoped<InboundOrderService>();
+        services.AddScoped<ReceivingService>();
 
         return services;
     }
