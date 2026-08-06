@@ -1,0 +1,65 @@
+# Build output
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+artifacts/
+publish/
+*.dll
+*.exe
+*.pdb
+
+# .NET / Visual Studio
+.vs/
+*.user
+*.suo
+*.userprefs
+*.sln.docstates
+project.lock.json
+project.fragment.lock.json
+
+# Rider / VS Code
+.idea/
+*.sln.iml
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+
+# Test results
+[Tt]est[Rr]esult*/
+coverage*.json
+coverage*.xml
+coverage*.info
+*.coverage
+*.trx
+TestResults/
+
+# Runtime logs — Serilog writes here
+logs/
+*.log
+
+# Secrets: never commit credentials.
+# Local development secrets live in dotnet user-secrets, outside the repo.
+appsettings.*.Local.json
+appsettings.Local.json
+*.pfx
+*.key
+.env
+.env.*
+!.env.example
+secrets.json
+
+# Local database scratch data
+.pgdata/
+*.dump
+*.bak
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini

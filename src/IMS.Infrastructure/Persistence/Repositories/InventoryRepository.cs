@@ -1,0 +1,166 @@
+using IMS.Application.Common.Interfaces;
+using IMS.Domain.Entities.Inventory;
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
+
+namespace IMS.Infrastructure.Persistence.Repositories;
+
+/// <summary>
+/// Stock access with PostgreSQL row-level locking.
+///
+/// Doc §11.11 requires concurrency control on simultaneous stock operations. EF's
+/// optimistic token (InventoryBalance.Version) detects a conflict only at save time,
+/// which for allocation means two callers can both read "10 available" and both decide
+/// they may take 8. Taking SELECT ... FOR UPDATE serialises them at read time instead,
+/// so the second caller sees the first one's result and correctly reports a shortfall.
+///
+/// The locks live for the enclosing transaction, which the caller opens via
+/// IApplicationDbContext.ExecuteInTransactionAsync.
+/// </summary>
+public class InventoryRepository : IInventoryRepository
+{
+    private readonly ImsDbContext _db;
+
+    public InventoryRepository(ImsDbContext db) => _db = db;
+
+    /// <summary>
+    /// Sentinel used for null lot/serial/LPN. PostgreSQL treats NULL as distinct in both
+    /// unique indexes and equality, so the doc §5.1 tuple is compared over COALESCE()
+    /// with this value - the same expression the unique index is built on.
+    /// </summary>
+    private static readonly Guid NullKey = Guid.Empty;
+
+    public async Task<InventoryBalance?> GetBalanceForUpdateAsync(BalanceKey key, CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT * FROM inventory_balances
+            WHERE "WarehouseId" = @wh
+              AND "LocationId" = @loc
+              AND "ItemId" = @item
+              AND "InventoryStatusId" = @status
+              AND COALESCE("LotId", @nullKey) = COALESCE(@lot, @nullKey)
+              AND COALESCE("SerialId", @nullKey) = COALESCE(@serial, @nullKey)
+              AND COALESCE("LicensePlateId", @nullKey) = COALESCE(@lpn, @nullKey)
+            FOR UPDATE
+            """;
+
+        var rows = await _db.InventoryBalances
+            .FromSqlRaw(sql,
+                new NpgsqlParameter("wh", key.WarehouseId),
+                new NpgsqlParameter("loc", key.LocationId),
+                new NpgsqlParameter("item", key.ItemId),
+                new NpgsqlParameter("status", key.InventoryStatusId),
+                new NpgsqlParameter("lot", (object?)key.LotId ?? DBNull.Value),
+                new NpgsqlParameter("serial", (object?)key.SerialId ?? DBNull.Value),
+                new NpgsqlParameter("lpn", (object?)key.LicensePlateId ?? DBNull.Value),
+                new NpgsqlParameter("nullKey", NullKey))
+            .ToListAsync(ct);
+
+        return rows.FirstOrDefault();
+    }
+
+    public async Task<InventoryBalance?> GetBalanceForUpdateAsync(Guid balanceId, CancellationToken ct = default)
+    {
+        var rows = await _db.InventoryBalances
+            .FromSqlRaw("SELECT * FROM inventory_balances WHERE \"Id\" = @id FOR UPDATE",
+                new NpgsqlParameter("id", balanceId))
+            .ToListAsync(ct);
+
+        return rows.FirstOrDefault();
+    }
+
+    public async Task<InventoryBalance> GetOrCreateBalanceForUpdateAsync(
+        BalanceKey key,
+        DateTimeOffset receivedAt,
+        CancellationToken ct = default)
+    {
+        var existing = await GetBalanceForUpdateAsync(key, ct);
+        if (existing is not null) return existing;
+
+        var balance = new InventoryBalance
+        {
+            WarehouseId = key.WarehouseId,
+            LocationId = key.LocationId,
+            ItemId = key.ItemId,
+            InventoryStatusId = key.InventoryStatusId,
+            LotId = key.LotId,
+            SerialId = key.SerialId,
+            LicensePlateId = key.LicensePlateId,
+            OnHandQuantity = 0m,
+            AllocatedQuantity = 0m,
+            HoldQuantity = 0m,
+            ReceivedAt = receivedAt
+        };
+
+        _db.InventoryBalances.Add(balance);
+
+        // Flush immediately so the row exists (and is lockable) for the rest of the
+        // transaction, and so a concurrent creator collides on the unique index now
+        // rather than at the end of the operation.
+        await _db.SaveChangesAsync(ct);
+
+        return balance;
+    }
+
+    public async Task<IReadOnlyList<InventoryBalance>> GetAllocationCandidatesForUpdateAsync(
+        Guid warehouseId,
+        Guid itemId,
+        string? requiredLotNumber,
+        string? requiredSerialNumber,
+        int? minimumShelfLifeDays,
+        DateTimeOffset asOf,
+        CancellationToken ct = default)
+    {
+        // Rule §11.4 is enforced by joining only statuses flagged IsAllocatable, so
+        // QualityHold / Damaged / Expired / Quarantine / Blocked stock is never a candidate.
+        //
+        // Ordering is FEFO-then-FIFO: soonest expiry first, then oldest receipt. This is
+        // deterministic source selection, not a slotting algorithm - doc §10 defers those.
+        const string sql = """
+            SELECT b.* FROM inventory_balances b
+            INNER JOIN inventory_statuses s ON s."Id" = b."InventoryStatusId"
+            LEFT JOIN lots l ON l."Id" = b."LotId"
+            LEFT JOIN serial_numbers sn ON sn."Id" = b."SerialId"
+            WHERE b."WarehouseId" = @wh
+              AND b."ItemId" = @item
+              AND s."IsAllocatable" = TRUE
+              AND (b."OnHandQuantity" - b."AllocatedQuantity" - b."HoldQuantity") > 0
+              AND (@lotNumber IS NULL OR l."LotNumber" = @lotNumber)
+              AND (@serialNumber IS NULL OR sn."Serial" = @serialNumber)
+              AND (l."ExpirationDate" IS NULL OR l."ExpirationDate" > @asOf)
+              AND (@minShelfLife IS NULL
+                   OR l."ExpirationDate" IS NULL
+                   OR l."ExpirationDate" >= @asOf + make_interval(days => @minShelfLife))
+            ORDER BY l."ExpirationDate" ASC NULLS LAST, b."ReceivedAt" ASC
+            FOR UPDATE OF b
+            """;
+
+        return await _db.InventoryBalances
+            .FromSqlRaw(sql,
+                new NpgsqlParameter("wh", warehouseId),
+                new NpgsqlParameter("item", itemId),
+                new NpgsqlParameter("lotNumber", (object?)requiredLotNumber ?? DBNull.Value),
+                new NpgsqlParameter("serialNumber", (object?)requiredSerialNumber ?? DBNull.Value),
+                new NpgsqlParameter("asOf", asOf),
+                new NpgsqlParameter("minShelfLife", (object?)minimumShelfLifeDays ?? DBNull.Value))
+            .ToListAsync(ct);
+    }
+
+    public async Task<decimal> GetAvailableQuantityAsync(
+        Guid warehouseId, Guid itemId, CancellationToken ct = default)
+    {
+        return await _db.InventoryBalances
+            .Where(b => b.WarehouseId == warehouseId
+                        && b.ItemId == itemId
+                        && b.InventoryStatus.IsAllocatable)
+            .SumAsync(b => (decimal?)b.AvailableQuantity, ct) ?? 0m;
+    }
+
+    public Task RemoveEmptyBalanceAsync(InventoryBalance balance, CancellationToken ct = default)
+    {
+        if (balance.IsEmpty())
+            _db.InventoryBalances.Remove(balance);
+
+        return Task.CompletedTask;
+    }
+}
