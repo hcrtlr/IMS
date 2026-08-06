@@ -1,0 +1,60 @@
+# Brings up PostgreSQL and the API together.
+#
+#   1. copy .env.example to .env and set the two passwords
+#   2. docker compose up --build
+#   3. open http://localhost:8080  (Swagger at /swagger)
+#
+# The API applies its own migrations and seeds reference data on first start, so no
+# manual database step is needed.
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: ims-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ims
+      POSTGRES_USER: ${POSTGRES_USER:-ims}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - ims-db-data:/var/lib/postgresql/data
+    # Not published to the host by default: only the API needs to reach it.
+    # Uncomment to inspect the database with a local client.
+    # ports:
+    #   - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ims} -d ims"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ims-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        # Wait for the database to accept connections, not merely to have started.
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Default: >-
+        Host=db;Port=5432;Database=ims;Username=${POSTGRES_USER:-ims};Password=${POSTGRES_PASSWORD}
+      # Must be at least 32 characters; the API refuses to start otherwise.
+      Jwt__Secret: ${JWT_SECRET:?set JWT_SECRET in .env}
+      Jwt__Issuer: IMS.Api
+      Jwt__Audience: IMS.Client
+      Database__AutoMigrate: "true"
+      Database__AutoSeed: "true"
+      # If left blank the seeder generates a random admin password and logs it once.
+      Seed__AdminPassword: ${SEED_ADMIN_PASSWORD:-}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ims-logs:/app/logs
+
+volumes:
+  ims-db-data:
+  ims-logs:
