@@ -1,5 +1,6 @@
 using IMS.Application.Common.Services;
 using IMS.Application.Features.Auth;
+using IMS.Application.Features.Inventory;
 using IMS.Application.Features.MasterData;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -22,6 +23,12 @@ public static class DependencyInjection
         services.AddScoped<LocationProfileService>();
         services.AddScoped<ItemService>();
         services.AddScoped<ReferenceDataService>();
+
+        // Faz 2 - inventory core. InventoryLedger is the single gateway through which
+        // stock may change, so rule §11.9 cannot be bypassed by another service.
+        services.AddScoped<InventoryLedger>();
+        services.AddScoped<InventoryService>();
+        services.AddScoped<TrackingService>();
 
         return services;
     }
