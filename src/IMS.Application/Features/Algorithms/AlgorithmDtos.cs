@@ -127,3 +127,40 @@ public sealed class OrderHistoryQuery : PagedQuery
     public DateTimeOffset? FromDate { get; set; }
     public DateTimeOffset? ToDate { get; set; }
 }
+
+// ---------------------------------------------------------------------------
+// Putaway planning. Unlike the records above, this one does decide: given an item
+// and a quantity it works out which locations the stock should go to and how many
+// units in each. See PutawayPlanner for how eligibility and ranking are separated.
+// ---------------------------------------------------------------------------
+
+public sealed record PutawayPlanDto(
+    Guid ItemId,
+    string Sku,
+    string ItemName,
+    decimal RequestedQuantity,
+    decimal PlannedQuantity,
+    decimal UnplannedQuantity,
+    decimal? UnitWeight,
+    decimal? UnitVolume,
+    decimal LinesPerDay,
+    bool IsFastMover,
+    IReadOnlyList<PutawayPlanLineDto> Lines,
+    IReadOnlyList<string> Notes);
+
+public sealed record PutawayPlanLineDto(
+    Guid LocationId,
+    string LocationCode,
+    string ZoneCode,
+    ZoneType ZoneType,
+    LocationType LocationType,
+    decimal Quantity,
+    /// <summary>Capacity ceiling in units; null when the location declares no limit.</summary>
+    decimal? UnitsThatFit,
+    decimal? RemainingWeight,
+    decimal? RemainingVolume,
+    decimal? DistanceToPacking,
+    int? AccessibilityScore,
+    bool AlreadyHoldsItem,
+    double Score,
+    string Reason);

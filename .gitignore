@@ -64,3 +64,7 @@ secrets.json
 Thumbs.db
 desktop.ini
 logs/
+
+# Visual Studio upgrade artifacts
+Backup/
+UpgradeLog*.htm

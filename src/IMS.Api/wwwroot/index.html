@@ -67,21 +67,33 @@
       <h2>Master data</h2>
 
       <div class="card">
-        <h3>Create item (doc §4.1)</h3>
+        <h3>Create item</h3>
         <div class="row">
-          <div><label>SKU</label><input id="item-sku"></div>
-          <div><label>Name</label><input id="item-name"></div>
-          <div><label>Base UOM</label><select id="item-uom"></select></div>
-          <div class="narrow"><label>Weight</label><input id="item-weight" type="number" step="0.001"></div>
+          <div><label for="item-sku">SKU</label><input id="item-sku"></div>
+          <div><label for="item-name">Name</label><input id="item-name"></div>
+          <div><label for="item-uom">Base UOM</label><select id="item-uom"></select></div>
         </div>
         <div class="spacer"></div>
         <div class="row">
-          <div class="narrow"><label>Lot tracked</label><select id="item-lot"><option value="false">No</option><option value="true">Yes</option></select></div>
-          <div class="narrow"><label>Serial tracked</label><select id="item-serial"><option value="false">No</option><option value="true">Yes</option></select></div>
-          <div class="narrow"><label>Expiration</label><select id="item-exp"><option value="false">No</option><option value="true">Yes</option></select></div>
-          <div class="narrow"><label>Shelf life (days)</label><input id="item-shelf" type="number"></div>
+          <div class="narrow"><label for="item-weight">Weight</label><input id="item-weight" type="number" step="0.001"></div>
+          <div class="narrow"><label for="item-length">Length</label><input id="item-length" type="number" step="0.001"></div>
+          <div class="narrow"><label for="item-width">Width</label><input id="item-width" type="number" step="0.001"></div>
+          <div class="narrow"><label for="item-height">Height</label><input id="item-height" type="number" step="0.001"></div>
+          <div class="narrow"><label for="item-volume">Volume</label><input id="item-volume" type="number" step="0.000001"></div>
+        </div>
+        <div class="spacer"></div>
+        <div class="row">
+          <div class="narrow"><label for="item-lot">Lot tracked</label><select id="item-lot"><option value="false">No</option><option value="true">Yes</option></select></div>
+          <div class="narrow"><label for="item-serial">Serial tracked</label><select id="item-serial"><option value="false">No</option><option value="true">Yes</option></select></div>
+          <div class="narrow"><label for="item-exp">Expiration</label><select id="item-exp"><option value="false">No</option><option value="true">Yes</option></select></div>
+          <div class="narrow"><label for="item-shelf">Shelf life (days)</label><input id="item-shelf" type="number"></div>
           <div><button class="action" id="btn-create-item">Create item</button></div>
         </div>
+        <p class="muted">
+          Leave Volume blank and it is worked out from length × width × height. Weight and volume
+          are what the putaway planner measures a location's remaining capacity against, so keep
+          your units consistent with the ones used on locations.
+        </p>
       </div>
 
       <div class="card">
@@ -90,8 +102,115 @@
       </div>
 
       <div class="card">
+        <h3 id="loc-form-title">Add location</h3>
+        <div class="row">
+          <div><label for="loc-code">Code</label><input id="loc-code"></div>
+          <div><label for="loc-zone">Zone</label><select id="loc-zone"></select></div>
+          <div><label for="loc-type">Location type</label><select id="loc-type"></select></div>
+          <div><label for="loc-profile">Profile</label><select id="loc-profile"></select></div>
+        </div>
+        <div class="spacer"></div>
+        <div class="row">
+          <div class="narrow"><label for="loc-aisle">Aisle</label><input id="loc-aisle"></div>
+          <div class="narrow"><label for="loc-bay">Bay</label><input id="loc-bay"></div>
+          <div class="narrow"><label for="loc-level">Level</label><input id="loc-level"></div>
+          <div class="narrow"><label for="loc-position">Position</label><input id="loc-position"></div>
+          <div class="narrow"><label for="loc-x">Coord X</label><input id="loc-x" type="number" step="0.01"></div>
+          <div class="narrow"><label for="loc-y">Coord Y</label><input id="loc-y" type="number" step="0.01"></div>
+          <div class="narrow"><label for="loc-z">Coord Z</label><input id="loc-z" type="number" step="0.01"></div>
+        </div>
+        <div class="spacer"></div>
+        <div class="row">
+          <div class="narrow"><label for="loc-maxweight">Max weight</label><input id="loc-maxweight" type="number" step="0.001"></div>
+          <div class="narrow"><label for="loc-maxvolume">Max volume</label><input id="loc-maxvolume" type="number" step="0.000001"></div>
+          <div class="narrow"><label for="loc-pickseq">Pick seq</label><input id="loc-pickseq" type="number"></div>
+          <div class="narrow"><label for="loc-putseq">Putaway seq</label><input id="loc-putseq" type="number"></div>
+          <div class="narrow"><label for="loc-dist-recv">To receiving</label><input id="loc-dist-recv" type="number" step="0.01"></div>
+          <div class="narrow"><label for="loc-dist-pack">To packing</label><input id="loc-dist-pack" type="number" step="0.01"></div>
+          <div class="narrow"><label for="loc-dist-ship">To shipping</label><input id="loc-dist-ship" type="number" step="0.01"></div>
+        </div>
+        <div class="spacer"></div>
+        <div class="row">
+          <div class="narrow"><label for="loc-access">Accessibility</label><input id="loc-access" type="number"></div>
+          <div class="narrow"><label for="loc-workers">Max workers</label><input id="loc-workers" type="number"></div>
+          <div class="narrow"><label for="loc-pickable">Pickable</label><select id="loc-pickable"><option value="true">Yes</option><option value="false">No</option></select></div>
+          <div class="narrow"><label for="loc-putaway">Putaway allowed</label><select id="loc-putaway"><option value="true">Yes</option><option value="false">No</option></select></div>
+          <div class="narrow"><label for="loc-active">Active</label><select id="loc-active" disabled><option value="true">Yes</option><option value="false">No</option></select></div>
+          <div><button class="action" id="btn-save-location">Add location</button></div>
+          <div class="narrow"><button class="action secondary hidden" id="btn-cancel-location">Cancel</button></div>
+        </div>
+        <p class="muted">
+          Max weight and max volume are the capacity the putaway planner fills. Left blank, the
+          location falls back to its profile's limits; blank on both means unlimited, and the
+          planner will say so rather than guess. Coordinates and distances are what let the
+          planner put fast movers close to packing.
+        </p>
+      </div>
+
+      <div class="card">
         <h3>Locations</h3>
         <div id="location-list"></div>
+      </div>
+    </section>
+
+    <!-- Suppliers & customers ------------------------------------------- -->
+    <section id="tab-partners">
+      <h2>Suppliers &amp; customers</h2>
+
+      <div class="card">
+        <h3 id="sup-form-title">Add supplier</h3>
+        <div class="row">
+          <div><label for="sup-code">Code</label><input id="sup-code"></div>
+          <div><label for="sup-name">Name</label><input id="sup-name"></div>
+          <div><label for="sup-contact">Contact</label><input id="sup-contact"></div>
+          <div><label for="sup-email">Email</label><input id="sup-email" type="email"></div>
+        </div>
+        <div class="spacer"></div>
+        <div class="row">
+          <div><label for="sup-phone">Phone</label><input id="sup-phone"></div>
+          <div><label for="sup-address">Address</label><input id="sup-address"></div>
+          <div class="narrow"><label for="sup-active">Active</label>
+            <select id="sup-active" disabled><option value="true">Yes</option><option value="false">No</option></select></div>
+          <div><button class="action" id="btn-save-supplier">Add supplier</button></div>
+          <div class="narrow"><button class="action secondary hidden" id="btn-cancel-supplier">Cancel</button></div>
+        </div>
+        <p class="muted">
+          The code identifies the supplier and cannot be changed once it exists. A new supplier
+          starts active; use Edit to deactivate one instead of deleting it, so past orders keep
+          their reference.
+        </p>
+      </div>
+
+      <div class="card">
+        <h3>Suppliers</h3>
+        <div id="supplier-list"></div>
+      </div>
+
+      <div class="card">
+        <h3 id="cus-form-title">Add customer</h3>
+        <div class="row">
+          <div><label for="cus-code">Code</label><input id="cus-code"></div>
+          <div><label for="cus-name">Name</label><input id="cus-name"></div>
+          <div><label for="cus-contact">Contact</label><input id="cus-contact"></div>
+          <div><label for="cus-email">Email</label><input id="cus-email" type="email"></div>
+        </div>
+        <div class="spacer"></div>
+        <div class="row">
+          <div><label for="cus-phone">Phone</label><input id="cus-phone"></div>
+          <div><label for="cus-address">Shipping address</label><input id="cus-address"></div>
+          <div class="narrow"><label for="cus-active">Active</label>
+            <select id="cus-active" disabled><option value="true">Yes</option><option value="false">No</option></select></div>
+          <div><button class="action" id="btn-save-customer">Add customer</button></div>
+          <div class="narrow"><button class="action secondary hidden" id="btn-cancel-customer">Cancel</button></div>
+        </div>
+        <p class="muted">
+          The shipping address is where outbound orders for this customer are sent.
+        </p>
+      </div>
+
+      <div class="card">
+        <h3>Customers</h3>
+        <div id="customer-list"></div>
       </div>
     </section>
 
@@ -100,7 +219,7 @@
       <h2>Inventory</h2>
 
       <div class="card">
-        <h3>Manual stock entry (Faz 2)</h3>
+        <h3>Manual stock entry</h3>
         <div class="row">
           <div><label>Item</label><select id="me-item"></select></div>
           <div><label>Location</label><select id="me-location"></select></div>
@@ -112,7 +231,7 @@
       </div>
 
       <div class="card">
-        <h3>Move stock (doc §8)</h3>
+        <h3>Move stock</h3>
         <div class="row">
           <div><label>Item</label><select id="mv-item"></select></div>
           <div><label>From</label><select id="mv-from"></select></div>
@@ -123,7 +242,7 @@
       </div>
 
       <div class="card">
-        <h3>Balances (doc §5.1)</h3>
+        <h3>Balances</h3>
         <div id="inv-list"></div>
       </div>
     </section>
@@ -133,14 +252,23 @@
       <h2>Inbound</h2>
 
       <div class="card">
-        <h3>Create inbound order (doc §6.1)</h3>
+        <h3>Create inbound order</h3>
         <div class="row">
-          <div><label>Supplier</label><select id="ib-supplier"></select></div>
-          <div><label>Item</label><select id="ib-item"></select></div>
-          <div class="narrow"><label>Expected qty</label><input id="ib-qty" type="number" step="0.0001"></div>
+          <div><label for="ib-supplier">Supplier</label><select id="ib-supplier"></select></div>
+          <div><label for="ib-item">Item</label><select id="ib-item"></select></div>
+          <div class="narrow"><label for="ib-qty">Expected qty</label><input id="ib-qty" type="number" step="0.0001"></div>
+        </div>
+        <div class="spacer"></div>
+        <div class="row">
+          <div><label for="ib-lot">Lot number</label><input id="ib-lot" placeholder="if lot tracked"></div>
+          <div><label for="ib-exp">Expiration date</label><input id="ib-exp" type="date"></div>
           <div><button class="action" id="btn-create-inbound">Create order</button></div>
         </div>
-        <p class="muted">Creates a single-line order in Draft. Use Confirm, then Receive.</p>
+        <p class="muted">
+          Creates a single-line order in Draft. Use Confirm, then Receive. The lot and expiration
+          entered here are what Receive books the stock under; leave them blank for an item that
+          is not lot or expiration tracked.
+        </p>
       </div>
 
       <div class="card">
@@ -149,7 +277,7 @@
       </div>
 
       <div class="card">
-        <h3>Putaway tasks (doc §6.4)</h3>
+        <h3>Putaway tasks</h3>
         <div id="putaway-list"></div>
       </div>
     </section>
@@ -159,7 +287,7 @@
       <h2>Outbound</h2>
 
       <div class="card">
-        <h3>Create order (doc §7.1)</h3>
+        <h3>Create order</h3>
         <div class="row">
           <div><label>Customer</label><select id="ob-customer"></select></div>
           <div><label>Item</label><select id="ob-item"></select></div>
@@ -175,7 +303,7 @@
       </div>
 
       <div class="card">
-        <h3>Pick tasks (doc §7.4)</h3>
+        <h3>Pick tasks</h3>
         <div id="pick-list"></div>
       </div>
     </section>
@@ -185,7 +313,7 @@
       <h2>Counting &amp; adjustments</h2>
 
       <div class="card">
-        <h3>Create count plan (Faz 5)</h3>
+        <h3>Create count plan</h3>
         <div class="row">
           <div><label>Name</label><input id="cp-name" placeholder="Weekly cycle count"></div>
           <div><label>Type</label><select id="cp-type">
@@ -212,11 +340,11 @@
 
     <!-- Transactions ----------------------------------------------------- -->
     <section id="tab-transactions">
-      <h2>Transaction ledger (doc §5.6)</h2>
+      <h2>Transaction ledger</h2>
       <div class="card">
         <p class="muted">
-          Immutable. Every stock change writes exactly one row (rule §11.9) and rows are
-          never updated or deleted (rule §11.10) — enforced by database triggers.
+          Immutable. Every stock change writes exactly one row, and rows are never
+          updated or deleted — enforced by database triggers.
         </p>
         <div class="row">
           <div><label>Type</label><select id="txn-type"><option value="">All</option></select></div>
@@ -228,11 +356,29 @@
 
     <!-- Algorithm readiness ---------------------------------------------- -->
     <section id="tab-readiness">
-      <h2>Algorithm readiness (Faz 6)</h2>
+      <h2>Putaway planner</h2>
       <div class="card">
         <p class="muted">
-          Doc §10 defers the algorithms themselves. This reports whether the data those
-          algorithms will need is actually being captured.
+          Answers where a quantity of an item should go and how many units belong in each
+          location. Eligibility uses the same hard rules putaway itself enforces — hazardous
+          goods, storage temperature, category and mixing — so a plan can never suggest a
+          location the putaway would refuse. The order among eligible locations is a
+          preference, and every line says why it ranked where it did.
+        </p>
+        <div class="row">
+          <div><label for="slot-item">Item</label><select id="slot-item"></select></div>
+          <div class="narrow"><label for="slot-qty">Quantity</label><input id="slot-qty" type="number" step="0.0001"></div>
+          <div><button class="action" id="btn-plan-putaway">Plan putaway</button></div>
+        </div>
+        <div id="slot-summary"></div>
+        <div id="slot-list"></div>
+      </div>
+
+      <h2>Algorithm readiness</h2>
+      <div class="card">
+        <p class="muted">
+          The algorithms themselves are out of scope for now. This reports whether the
+          data those algorithms will need is actually being captured.
         </p>
         <div id="readiness-list"></div>
       </div>

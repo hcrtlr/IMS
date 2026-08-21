@@ -18,8 +18,25 @@ namespace IMS.Api.Controllers;
 public class AlgorithmsController : ControllerBase
 {
     private readonly AlgorithmReadinessService _service;
+    private readonly PutawayPlanner _putawayPlanner;
 
-    public AlgorithmsController(AlgorithmReadinessService service) => _service = service;
+    public AlgorithmsController(AlgorithmReadinessService service, PutawayPlanner putawayPlanner)
+    {
+        _service = service;
+        _putawayPlanner = putawayPlanner;
+    }
+
+    /// <summary>
+    /// Works out where a quantity of an item should be put away and how much goes in each
+    /// location. Eligibility uses the same hard rules putaway itself enforces; the ordering
+    /// among eligible locations is a preference, and every line carries its reasoning.
+    /// </summary>
+    [HttpGet("putaway-plan")]
+    [Authorize(Policy = Policies.ReadOnly)]
+    public async Task<ActionResult<PutawayPlanDto>> PutawayPlan(
+        [FromQuery] Guid warehouseId, [FromQuery] Guid itemId, [FromQuery] decimal quantity,
+        CancellationToken ct)
+        => Ok(await _putawayPlanner.PlanAsync(warehouseId, itemId, quantity, ct));
 
     /// <summary>
     /// Reports how much of the §10 data groundwork is populated, per data point, so

@@ -49,6 +49,7 @@ public static class DependencyInjection
 
         // Faz 6 - algorithm readiness (data capture only; no algorithm decides anything)
         services.AddScoped<AlgorithmReadinessService>();
+        services.AddScoped<PutawayPlanner>();
 
         return services;
     }

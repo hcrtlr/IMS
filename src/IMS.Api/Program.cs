@@ -172,7 +172,19 @@ try
     }
 
     app.UseDefaultFiles();
-    app.UseStaticFiles();
+
+    // The demo client is edited in place while the API keeps running. Static files carry no
+    // Cache-Control of their own, which leaves browsers free to cache them heuristically and
+    // serve a stale app.js after every edit. In development ask for revalidation instead:
+    // the response still 304s when nothing changed, but a changed file is always picked up.
+    var isDevelopment = app.Environment.IsDevelopment();
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        OnPrepareResponse = context =>
+        {
+            if (isDevelopment) context.Context.Response.Headers.CacheControl = "no-cache";
+        }
+    });
 
     app.UseCors("DemoClient");
     app.UseAuthentication();

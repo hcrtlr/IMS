@@ -11,7 +11,24 @@ const State = {
   token: sessionStorage.getItem('ims.token') || null,
   user: null,
   warehouseId: null,
-  cache: { items: [], locations: [], uoms: [], suppliers: [], customers: [], warehouses: [] }
+  cache: { items: [], locations: [], uoms: [], suppliers: [], customers: [], warehouses: [] },
+  // Id of the record currently loaded into a form, or null when that form is adding a new one.
+  editing: { supplier: null, customer: null, location: null }
+};
+
+/* When the API rejects a request it names the business rule that was broken. The rule
+   itself means nothing to whoever is standing at the screen, so each one is spelled out
+   in plain language and appended to the message instead. */
+const RULE_EXPLANATIONS = {
+  5: 'Serial-tracked items are handled one unit at a time. Every movement has to name the '
+   + 'serial number it applies to, and a single serial can never hold more than one unit.',
+  6: 'Expiration-tracked items must always carry an expiration date. Supply the date with '
+   + 'the stock, or give the item a shelf life so the system can work the date out itself.',
+  8: 'A location only accepts stock it is equipped to hold. Hazardous goods need a hazmat '
+   + 'zone, temperature-controlled goods need a location inside their temperature range, '
+   + 'and some locations take only one item category or refuse to mix two items at once.',
+  10: 'Stock transactions are a permanent audit trail. New ones can be added, but an '
+    + 'existing one can never be edited or deleted.'
 };
 
 // --------------------------------------------------------------- HTTP
@@ -37,17 +54,19 @@ async function api(method, path, body) {
   if (!res.ok) {
     // The API returns RFC7807-style problems; surface the useful parts, including the
     // per-item shortfall list that acceptance scenario 3 requires.
-    let msg = payload?.detail || payload?.title || `HTTP ${res.status}`;
+    let msg = payload?.detail || payload?.title || `The request failed (HTTP ${res.status}).`;
     if (payload?.errors) {
-      msg += '\n' + Object.entries(payload.errors)
-        .map(([k, v]) => `${k}: ${[].concat(v).join(', ')}`).join('\n');
+      msg += '\n\nThese fields need attention:\n' + Object.entries(payload.errors)
+        .map(([k, v]) => `• ${k} — ${[].concat(v).join(' ')}`).join('\n');
     }
     if (payload?.shortfalls?.length) {
-      msg += '\n' + payload.shortfalls
-        .map(s => `${s.sku}: requested ${s.requestedQuantity}, available ${s.availableQuantity}, short ${s.shortQuantity}`)
+      msg += '\n\nThere is not enough stock to cover the order:\n' + payload.shortfalls
+        .map(s => `• ${s.sku} — ${s.requestedQuantity} requested, ${s.availableQuantity} available, ` +
+                  `${s.shortQuantity} short`)
         .join('\n');
     }
-    if (payload?.ruleNumber) msg += `\n(doc rule §11.${payload.ruleNumber})`;
+    const explanation = RULE_EXPLANATIONS[payload?.ruleNumber];
+    if (explanation) msg += `\n\nWhy: ${explanation}`;
     throw new Error(msg);
   }
 
@@ -62,7 +81,8 @@ function toast(message, isError) {
   el.className = isError ? 'error' : '';
   el.style.display = 'block';
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => { el.style.display = 'none'; }, isError ? 8000 : 3500);
+  // Errors now carry a written explanation, so they need long enough on screen to read.
+  toast._t = setTimeout(() => { el.style.display = 'none'; }, isError ? 15000 : 3500);
 }
 
 /** Escapes text before it reaches innerHTML, so item names cannot inject markup. */
@@ -92,6 +112,24 @@ function table(target, rows, cols, emptyMessage) {
     `<table><thead><tr>${cols.map(c => `<th class="${c.cls || ''}">${esc(c.head)}</th>`).join('')}</tr></thead>` +
     `<tbody>${rows.map(r =>
       `<tr>${cols.map(c => `<td class="${c.cls || ''}">${c.get(r)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+
+/** Trimmed value of a text input, or null when the field was left empty. */
+function val(id) {
+  const v = document.getElementById(id).value.trim();
+  return v === '' ? null : v;
+}
+
+/** Numeric value of an input, or null when it was left empty. */
+function numberOrNull(id) {
+  const v = document.getElementById(id).value.trim();
+  return v === '' ? null : Number(v);
+}
+
+/** A date input as an ISO timestamp, or null when no date was picked. */
+function expiryOrNull(id) {
+  const v = document.getElementById(id).value;
+  return v ? new Date(v).toISOString() : null;
 }
 
 function fill(selectId, rows, valueKey, labelFn, includeBlank) {
@@ -150,6 +188,7 @@ function signOut() {
 const TABS = [
   ['dashboard', 'Dashboard', loadDashboard],
   ['master', 'Master data', loadMaster],
+  ['partners', 'Partners', loadPartners],
   ['inventory', 'Inventory', loadInventory],
   ['inbound', 'Inbound', loadInbound],
   ['outbound', 'Outbound', loadOutbound],
@@ -211,14 +250,19 @@ async function startApp() {
   showTab('dashboard');
 }
 
+const LOCATION_TYPES = ['SmallBin', 'StandardShelf', 'PalletRack', 'FloorStorage',
+  'ColdStorage', 'DangerousGoods', 'PickFace', 'ReserveStorage'];
+
 async function loadReferenceData() {
-  const [items, locations, uoms, suppliers, customers, statuses] = await Promise.all([
+  const [items, locations, uoms, suppliers, customers, statuses, zones, profiles] = await Promise.all([
     api('GET', '/api/items?PageSize=200&isActive=true'),
     api('GET', `/api/locations?warehouseId=${State.warehouseId}&PageSize=200`),
     api('GET', '/api/units-of-measure'),
     api('GET', '/api/suppliers'),
     api('GET', '/api/customers'),
-    api('GET', '/api/inventory/statuses')
+    api('GET', '/api/inventory/statuses'),
+    api('GET', `/api/zones?warehouseId=${State.warehouseId}`),
+    api('GET', '/api/location-profiles')
   ]);
 
   State.cache.items = items.items;
@@ -227,6 +271,14 @@ async function loadReferenceData() {
   State.cache.suppliers = suppliers;
   State.cache.customers = customers;
   State.cache.statuses = statuses;
+  State.cache.zones = zones;
+  State.cache.profiles = profiles;
+
+  fill('loc-zone', zones, 'id', z => `${z.code} — ${z.name} (${z.zoneType})`);
+  fill('loc-profile', profiles, 'id', p => `${p.code} — ${p.name}`, true);
+  document.getElementById('loc-type').innerHTML =
+    LOCATION_TYPES.map(t => `<option>${t}</option>`).join('');
+  fill('slot-item', items.items, 'id', i => `${i.sku} — ${i.name}`);
 
   const itemLabel = i => `${i.sku} — ${i.name}`;
   const locLabel = l => `${l.code} (${l.zoneCode})`;
@@ -304,6 +356,10 @@ async function loadMaster() {
     { head: 'Name', get: r => esc(r.name) },
     { head: 'Category', get: r => esc(r.categoryName || '—') },
     { head: 'UOM', get: r => esc(r.baseUomCode) },
+    { head: 'Weight', cls: 'num', get: r => r.weight == null ? '—' : num(r.weight, 3) },
+    { head: 'Volume', cls: 'num', get: r => r.volume == null ? '—' : num(r.volume, 4) },
+    { head: 'L×W×H', get: r => [r.length, r.width, r.height].every(v => v == null) ? '—'
+        : `${num(r.length, 2)} × ${num(r.width, 2)} × ${num(r.height, 2)}` },
     { head: 'Tracking', get: r => [
         r.isLotTracked ? pill('Lot') : '',
         r.isSerialTracked ? pill('Serial') : '',
@@ -319,9 +375,15 @@ async function loadMaster() {
     { head: 'Type', get: r => esc(r.locationType) },
     { head: 'Profile', get: r => esc(r.locationProfileCode || '—') },
     { head: 'Pick seq', cls: 'num', get: r => r.pickSequence ?? '—' },
+    { head: 'Max weight', cls: 'num', get: r => r.maxWeight == null ? '—' : num(r.maxWeight, 3) },
+    { head: 'Max volume', cls: 'num', get: r => r.maxVolume == null ? '—' : num(r.maxVolume, 4) },
+    { head: 'X / Y / Z', get: r => [r.coordinateX, r.coordinateY, r.coordinateZ].every(v => v == null)
+        ? '—' : `${num(r.coordinateX, 1)} / ${num(r.coordinateY, 1)} / ${num(r.coordinateZ, 1)}` },
     { head: 'On hand', cls: 'num', get: r => num(r.currentOnHandQuantity) },
     { head: 'Items', cls: 'num', get: r => r.distinctItemCount },
-    { head: 'Putaway', get: r => r.isPutawayAllowed ? pill('Yes', 'ok') : pill('No') }
+    { head: 'Putaway', get: r => r.isPutawayAllowed ? pill('Yes', 'ok') : pill('No') },
+    { head: 'Actions', get: r =>
+        `<button class="action secondary" data-act="edit-location" data-id="${esc(r.id)}">Edit</button>` }
   ]);
 }
 
@@ -329,14 +391,24 @@ async function createItem() {
   const isExpiration = document.getElementById('item-exp').value === 'true';
   const shelf = document.getElementById('item-shelf').value;
 
+  const length = numberOrNull('item-length');
+  const width = numberOrNull('item-width');
+  const height = numberOrNull('item-height');
+
+  // A volume typed by hand wins; otherwise derive it from the three dimensions.
+  let volume = numberOrNull('item-volume');
+  if (volume === null && length !== null && width !== null && height !== null) {
+    volume = length * width * height;
+  }
+
   await api('POST', '/api/items', {
     sku: document.getElementById('item-sku').value.trim(),
     name: document.getElementById('item-name').value.trim(),
     description: null,
     categoryId: null,
     baseUomId: document.getElementById('item-uom').value,
-    weight: document.getElementById('item-weight').value || null,
-    length: null, width: null, height: null, volume: null,
+    weight: numberOrNull('item-weight'),
+    length, width, height, volume,
     isLotTracked: document.getElementById('item-lot').value === 'true',
     isSerialTracked: document.getElementById('item-serial').value === 'true',
     isExpirationTracked: isExpiration,
@@ -347,10 +419,211 @@ async function createItem() {
   });
 
   toast('Item created.');
-  document.getElementById('item-sku').value = '';
-  document.getElementById('item-name').value = '';
+  ['item-sku', 'item-name', 'item-weight', 'item-length', 'item-width', 'item-height',
+    'item-volume', 'item-shelf'].forEach(id => { document.getElementById(id).value = ''; });
   await loadReferenceData();
   await loadMaster();
+}
+
+// --------------------------------------------------------------- locations
+
+/* Everything except the code and the warehouse can be edited later, so one form serves
+   both. Capacity (max weight / max volume) and the coordinate and distance fields are what
+   the putaway planner reads, which is why they are on the form rather than left to the API. */
+
+const LOCATION_FIELDS = {
+  'loc-aisle': 'aisle', 'loc-bay': 'bay', 'loc-level': 'level', 'loc-position': 'position',
+  'loc-x': 'coordinateX', 'loc-y': 'coordinateY', 'loc-z': 'coordinateZ',
+  'loc-maxweight': 'maxWeight', 'loc-maxvolume': 'maxVolume',
+  'loc-pickseq': 'pickSequence', 'loc-putseq': 'putawaySequence',
+  'loc-dist-recv': 'distanceToReceiving', 'loc-dist-pack': 'distanceToPacking',
+  'loc-dist-ship': 'distanceToShipping',
+  'loc-access': 'accessibilityScore', 'loc-workers': 'maxConcurrentWorkers'
+};
+
+const LOCATION_TEXT_FIELDS = ['loc-aisle', 'loc-bay', 'loc-level', 'loc-position'];
+
+function locationFormBody() {
+  const body = {
+    zoneId: document.getElementById('loc-zone').value,
+    locationType: document.getElementById('loc-type').value,
+    locationProfileId: document.getElementById('loc-profile').value || null,
+    isPickable: document.getElementById('loc-pickable').value === 'true',
+    isPutawayAllowed: document.getElementById('loc-putaway').value === 'true'
+  };
+
+  for (const [inputId, field] of Object.entries(LOCATION_FIELDS)) {
+    body[field] = LOCATION_TEXT_FIELDS.includes(inputId) ? val(inputId) : numberOrNull(inputId);
+  }
+
+  return body;
+}
+
+function editLocation(id) {
+  const location = State.cache.locations.find(l => l.id === id);
+  if (!location) return;
+
+  State.editing.location = id;
+
+  document.getElementById('loc-code').value = location.code;
+  document.getElementById('loc-code').disabled = true;
+  document.getElementById('loc-zone').value = location.zoneId;
+  document.getElementById('loc-type').value = location.locationType;
+  document.getElementById('loc-profile').value = location.locationProfileId || '';
+  document.getElementById('loc-pickable').value = String(location.isPickable);
+  document.getElementById('loc-putaway').value = String(location.isPutawayAllowed);
+
+  for (const [inputId, field] of Object.entries(LOCATION_FIELDS)) {
+    document.getElementById(inputId).value = location[field] ?? '';
+  }
+
+  const active = document.getElementById('loc-active');
+  active.disabled = false;
+  active.value = String(location.isActive);
+
+  document.getElementById('loc-form-title').textContent = `Edit location ${location.code}`;
+  document.getElementById('btn-save-location').textContent = 'Save changes';
+  document.getElementById('btn-cancel-location').classList.remove('hidden');
+  document.getElementById('loc-zone').focus();
+}
+
+function resetLocationForm() {
+  document.getElementById('loc-code').value = '';
+  document.getElementById('loc-code').disabled = false;
+  Object.keys(LOCATION_FIELDS).forEach(id => { document.getElementById(id).value = ''; });
+
+  document.getElementById('loc-pickable').value = 'true';
+  document.getElementById('loc-putaway').value = 'true';
+
+  const active = document.getElementById('loc-active');
+  active.value = 'true';
+  active.disabled = true;
+
+  State.editing.location = null;
+  document.getElementById('loc-form-title').textContent = 'Add location';
+  document.getElementById('btn-save-location').textContent = 'Add location';
+  document.getElementById('btn-cancel-location').classList.add('hidden');
+}
+
+async function saveLocation() {
+  const body = locationFormBody();
+  const id = State.editing.location;
+
+  if (id) {
+    body.isActive = document.getElementById('loc-active').value === 'true';
+    await api('PUT', `/api/locations/${id}`, body);
+    toast('Location updated.');
+  } else {
+    body.warehouseId = State.warehouseId;
+    body.code = val('loc-code');
+    await api('POST', '/api/locations', body);
+    toast('Location added.');
+  }
+
+  resetLocationForm();
+  await loadReferenceData();
+  await loadMaster();
+}
+
+// --------------------------------------------------------------- partners
+
+async function loadPartners() {
+  const [suppliers, customers] = await Promise.all([
+    api('GET', '/api/suppliers'),
+    api('GET', '/api/customers')
+  ]);
+
+  State.cache.suppliers = suppliers;
+  State.cache.customers = customers;
+
+  const contactColumns = [
+    { head: 'Code', get: r => esc(r.code) },
+    { head: 'Name', get: r => esc(r.name) },
+    { head: 'Contact', get: r => esc(r.contactName || '—') },
+    { head: 'Email', get: r => esc(r.email || '—') },
+    { head: 'Phone', get: r => esc(r.phone || '—') }
+  ];
+
+  table('supplier-list', suppliers, [
+    ...contactColumns,
+    { head: 'Address', get: r => esc(r.address || '—') },
+    { head: 'Active', get: r => r.isActive ? pill('Yes', 'ok') : pill('No', 'bad') },
+    { head: 'Actions', get: r =>
+        `<button class="action secondary" data-act="edit-supplier" data-id="${esc(r.id)}">Edit</button>` }
+  ], 'No suppliers yet. Add one above.');
+
+  table('customer-list', customers, [
+    ...contactColumns,
+    { head: 'Ships to', get: r => esc(r.shippingAddress || '—') },
+    { head: 'Active', get: r => r.isActive ? pill('Yes', 'ok') : pill('No', 'bad') },
+    { head: 'Actions', get: r =>
+        `<button class="action secondary" data-act="edit-customer" data-id="${esc(r.id)}">Edit</button>` }
+  ], 'No customers yet. Add one above.');
+}
+
+/* Both forms double as the edit form: picking Edit on a row loads it, and Cancel puts the
+   form back into add mode. The code is fixed once a partner exists, so it is locked while
+   editing — everything else, including whether the partner is still active, can change. */
+
+function loadPartnerForm(prefix, partner, addressField, label) {
+  document.getElementById(`${prefix}-code`).value = partner.code;
+  document.getElementById(`${prefix}-code`).disabled = true;
+  document.getElementById(`${prefix}-name`).value = partner.name;
+  document.getElementById(`${prefix}-contact`).value = partner.contactName || '';
+  document.getElementById(`${prefix}-email`).value = partner.email || '';
+  document.getElementById(`${prefix}-phone`).value = partner.phone || '';
+  document.getElementById(`${prefix}-address`).value = partner[addressField] || '';
+
+  const active = document.getElementById(`${prefix}-active`);
+  active.disabled = false;
+  active.value = String(partner.isActive);
+
+  document.getElementById(`${prefix}-form-title`).textContent = `Edit ${label} ${partner.code}`;
+  document.getElementById(`btn-save-${label}`).textContent = 'Save changes';
+  document.getElementById(`btn-cancel-${label}`).classList.remove('hidden');
+  document.getElementById(`${prefix}-name`).focus();
+}
+
+function resetPartnerForm(prefix, label) {
+  ['code', 'name', 'contact', 'email', 'phone', 'address']
+    .forEach(f => { document.getElementById(`${prefix}-${f}`).value = ''; });
+
+  document.getElementById(`${prefix}-code`).disabled = false;
+
+  const active = document.getElementById(`${prefix}-active`);
+  active.value = 'true';
+  active.disabled = true;
+
+  State.editing[label] = null;
+  document.getElementById(`${prefix}-form-title`).textContent = `Add ${label}`;
+  document.getElementById(`btn-save-${label}`).textContent = `Add ${label}`;
+  document.getElementById(`btn-cancel-${label}`).classList.add('hidden');
+}
+
+async function savePartner(prefix, label, path, addressField) {
+  const body = {
+    name: val(`${prefix}-name`),
+    contactName: val(`${prefix}-contact`),
+    email: val(`${prefix}-email`),
+    phone: val(`${prefix}-phone`),
+    [addressField]: val(`${prefix}-address`)
+  };
+
+  const id = State.editing[label];
+  if (id) {
+    body.isActive = document.getElementById(`${prefix}-active`).value === 'true';
+    await api('PUT', `${path}/${id}`, body);
+    toast(`Updated ${label}.`);
+  } else {
+    body.code = val(`${prefix}-code`);
+    await api('POST', path, body);
+    toast(`Added ${label}.`);
+  }
+
+  resetPartnerForm(prefix, label);
+  await loadPartners();
+  // Keeps the Inbound and Outbound pickers in step with what was just changed.
+  await loadReferenceData();
 }
 
 // --------------------------------------------------------------- inventory
@@ -476,12 +749,13 @@ async function createInbound() {
       itemId,
       expectedQuantity: Number(document.getElementById('ib-qty').value),
       uomId: uom.id,
-      expectedLotNumber: null,
-      expectedExpirationDate: null
+      expectedLotNumber: val('ib-lot'),
+      expectedExpirationDate: expiryOrNull('ib-exp')
     }]
   });
 
   toast('Inbound order created in Draft.');
+  ['ib-qty', 'ib-lot', 'ib-exp'].forEach(id => { document.getElementById(id).value = ''; });
   await loadInbound();
 }
 
@@ -722,6 +996,49 @@ async function loadTransactions() {
   renderTxns('txn-list', res.items);
 }
 
+// --------------------------------------------------------------- putaway planner
+
+async function planPutaway() {
+  const quantity = numberOrNull('slot-qty');
+  if (quantity === null || quantity <= 0) throw new Error('Enter how many units to put away.');
+
+  const itemId = document.getElementById('slot-item').value;
+  if (!itemId) throw new Error('Pick an item first.');
+
+  const plan = await api('GET', '/api/algorithms/putaway-plan' +
+    `?warehouseId=${State.warehouseId}&itemId=${itemId}&quantity=${quantity}`);
+
+  const velocity = plan.isFastMover
+    ? pill('fast mover', 'ok')
+    : pill('slow mover');
+
+  const placement = plan.unplannedQuantity > 0
+    ? pill(`${num(plan.unplannedQuantity)} unplaced`, 'warn')
+    : pill('fully placed', 'ok');
+
+  document.getElementById('slot-summary').innerHTML =
+    `<p><strong>${esc(plan.sku)}</strong> — ${esc(plan.itemName)} · ` +
+    `${num(plan.plannedQuantity)} of ${num(plan.requestedQuantity)} placed ${placement} · ` +
+    `${velocity} at ${num(plan.linesPerDay, 3)} lines/day · ` +
+    `unit weight ${plan.unitWeight == null ? '—' : num(plan.unitWeight, 3)}, ` +
+    `unit volume ${plan.unitVolume == null ? '—' : num(plan.unitVolume, 4)}</p>` +
+    plan.notes.map(n => `<p class="muted">${esc(n)}</p>`).join('');
+
+  table('slot-list', plan.lines, [
+    { head: 'Put here', cls: 'num', get: r => `<strong>${num(r.quantity)}</strong>` },
+    { head: 'Location', get: r => esc(r.locationCode) },
+    { head: 'Zone', get: r => esc(r.zoneCode) + ' ' + pill(r.zoneType) },
+    { head: 'Type', get: r => esc(r.locationType) },
+    { head: 'Capacity', cls: 'num', get: r => r.unitsThatFit == null
+        ? '<span class="muted">no limit set</span>' : num(r.unitsThatFit) },
+    { head: 'Weight left', cls: 'num', get: r => r.remainingWeight == null ? '—' : num(r.remainingWeight, 3) },
+    { head: 'Volume left', cls: 'num', get: r => r.remainingVolume == null ? '—' : num(r.remainingVolume, 4) },
+    { head: 'To packing', cls: 'num', get: r => r.distanceToPacking == null ? '—' : num(r.distanceToPacking, 1) },
+    { head: 'Score', cls: 'num', get: r => num(r.score, 2) },
+    { head: 'Why', get: r => `<span class="muted">${esc(r.reason)}</span>` }
+  ], 'No eligible location could take any of it — see the notes above.');
+}
+
 // --------------------------------------------------------------- readiness
 
 async function loadReadiness() {
@@ -729,7 +1046,7 @@ async function loadReadiness() {
 
   table('readiness-list', rd.checks, [
     { head: 'Area', get: r => esc(r.category) },
-    { head: 'Data point (doc §10)', get: r => esc(r.dataPoint) },
+    { head: 'Data point', get: r => esc(r.dataPoint) },
     { head: 'Records', cls: 'num', get: r => r.totalRecords },
     { head: 'Populated', cls: 'num', get: r => r.populatedRecords },
     { head: 'Ready', get: r => r.isReady ? pill('Yes', 'ok') : pill('No data', 'warn') }
@@ -756,12 +1073,45 @@ document.getElementById('login-pass').addEventListener('keydown', e => {
 document.getElementById('btn-logout').onclick = signOut;
 
 document.getElementById('btn-create-item').onclick = () => guard(createItem);
+
+document.getElementById('btn-save-location').onclick = () => guard(saveLocation);
+document.getElementById('btn-cancel-location').onclick = () => resetLocationForm();
+
+onAction('location-list', (act, id) => {
+  if (act === 'edit-location') editLocation(id);
+});
+
+document.getElementById('btn-save-supplier').onclick =
+  () => guard(() => savePartner('sup', 'supplier', '/api/suppliers', 'address'));
+document.getElementById('btn-cancel-supplier').onclick =
+  () => resetPartnerForm('sup', 'supplier');
+document.getElementById('btn-save-customer').onclick =
+  () => guard(() => savePartner('cus', 'customer', '/api/customers', 'shippingAddress'));
+document.getElementById('btn-cancel-customer').onclick =
+  () => resetPartnerForm('cus', 'customer');
+
+onAction('supplier-list', (act, id) => {
+  if (act !== 'edit-supplier') return;
+  const supplier = State.cache.suppliers.find(s => s.id === id);
+  if (!supplier) return;
+  State.editing.supplier = id;
+  loadPartnerForm('sup', supplier, 'address', 'supplier');
+});
+
+onAction('customer-list', (act, id) => {
+  if (act !== 'edit-customer') return;
+  const customer = State.cache.customers.find(c => c.id === id);
+  if (!customer) return;
+  State.editing.customer = id;
+  loadPartnerForm('cus', customer, 'shippingAddress', 'customer');
+});
 document.getElementById('btn-manual-entry').onclick = () => guard(manualEntry);
 document.getElementById('btn-move').onclick = () => guard(moveStock);
 document.getElementById('btn-create-inbound').onclick = () => guard(createInbound);
 document.getElementById('btn-create-order').onclick = () => guard(createOrder);
 document.getElementById('btn-create-plan').onclick = () => guard(createCountPlan);
 document.getElementById('btn-refresh-txn').onclick = () => guard(loadTransactions);
+document.getElementById('btn-plan-putaway').onclick = () => guard(planPutaway);
 
 onAction('inbound-list', async (act, id) => {
   if (act === 'confirm-inbound') { await api('POST', `/api/inbound-orders/${id}/confirm`); toast('Confirmed.'); await loadInbound(); }
